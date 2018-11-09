@@ -1,0 +1,82 @@
+---
+title: "Wrangle to time series"
+output: html_notebook
+---
+
+The previous shiny example is useful for filtering by country.  At the same time, the filtering by year is awkward.  Since this is essentially time series data, I recommend converting the tibble (data frame) data structure into a *time series* data structure.  It's worth noting that the reactive filtering demonstrated in the above example will have to be transformed into a `select` function (as opposed to a `filter` function.  This is the case because the time series has years as rows.  Rows are filtered.  Correspondingly, the time series has columns as countries -- hence `select` is the function to invoke the user's preference.)
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)  # dplyr, part of tidyverse,  has spread() & gather() 
+library(lubridate)  # to coerce data into a "date" data type
+library(timetk)     # convert tibble to time series
+library(dygraphs)   # visualize time series with time slider
+library(readxl)
+```
+
+
+## Load Data
+
+https://rstudio-pubs-static.s3.amazonaws.com/282405_e280f5f0073544d7be417cde893d78d0.html
+
+Probably makes sense to have two time series (tibbles):  import and exports.  I suspect you can integrate imports and exports into the same time series.  However, since you are displaying graphs side-by-side with facet_wrap, it might be easier to simply generate two time series (tibbles) and then present two different dygraphs, pending the reactivity of the user selection for country
+
+For demonstration purposes I will create one time series (tibble) of Exports.  
+
+```{r}
+Trade <- read_excel("Trade_SSA.xlsx") %>% 
+  filter(`Trade Flow` == "Export") %>%   # limit to exports
+  select("Reporter Name", "1992":"2016") %>% 
+  rename(country = "Reporter Name") 
+
+```
+
+### Transpose tibble
+
+Time series needs to have time as a variable, not columns.  Here, using `gather()` and `spread()`, I transpose the Tibble.  I'm not actually certain this transposition is absolutely necessary, but all the time series data types I saw have this quality.  Although we have not yet coerced into a time series, I find it easiest to do the transpose while the data are contained within a Tibble.  You can learn more about time series data structures if you want to to learn more about the levels and types of flexibility (and sophistication) can be leveraged within the time series data structure.
+
+```{r}
+
+Trade_exports <- Trade %>% 
+  gather(year, value, "1992":"2016") %>% 
+  spread(country, value)
+
+Trade_exports
+```
+
+## Convert year to Date
+
+Time series needs the year to have a data type of *date* rather than `character`.  `ymd` comes from the lubridate package.
+
+```{r}
+Trade_exports <- Trade_exports %>% 
+  mutate(year = ymd(paste0(year, "-01-01")))
+
+Trade_exports
+```
+
+## Coerce to Time Series Tibble
+
+`tk_ts` comes from the timetk package.
+
+```{r}
+Trade_exports_ts <- tk_ts(Trade_exports, start = 1992)
+Trade_exports_ts
+```
+
+## Vis with dygraphs
+
+Now that the data are formatted as a time series, dygraphs can naturally display the data with an interactive time slider.  First, I'll generate a graph without a data slider.
+
+```{r}
+dygraph(Trade_exports_ts)
+```
+
+### Set default time window
+
+dygraphs has a default time slider by using the `dateWindow` function.
+
+```{r}
+dygraph(Trade_exports_ts) %>% 
+  dyRangeSelector(dateWindow = c("2005-01-01", "2014-01-01"))
+```
+
